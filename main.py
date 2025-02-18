@@ -67,6 +67,12 @@ async def predict(file: UploadFile = File(...)):
     os.unlink(temp_path)
     os.unlink(amplified_path)
 
+import uvicorn
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
     # Determine health status
     status = "Abnormal" if prediction > 0.5 else "Healthy"
 
