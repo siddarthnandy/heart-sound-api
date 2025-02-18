@@ -7,21 +7,21 @@ import soundfile as sf
 import tempfile
 import os
 
-# Load the trained model
-MODEL_PATH = "final_best_model.h5"
-model = tf.keras.models.load_model(MODEL_PATH)
-
 # Initialize FastAPI app
 app = FastAPI()
 
-# Enable CORS for web app requests
+# Enable CORS for frontend access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Change to specific domain in production
+    allow_origins=["*"],  # Allows all websites (change to specific domains if needed)
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allows all HTTP methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allows all headers
 )
+
+# Load the trained model
+MODEL_PATH = "final_best_model.h5"
+model = tf.keras.models.load_model(MODEL_PATH)
 
 # Function to preprocess audio
 def preprocess_audio(file_path, n_mfcc=40):
@@ -48,6 +48,11 @@ def amplify_audio(file_path, factor=5.0):
     sf.write(amplified_path, y, sr)
     return amplified_path
 
+# API route to check if the server is running
+@app.get("/")
+def home():
+    return {"message": "CardioAI Heart Sound Analysis API is running!"}
+
 # API route to upload and analyze audio
 @app.post("/predict/")
 async def predict(file: UploadFile = File(...)):
@@ -57,9 +62,12 @@ async def predict(file: UploadFile = File(...)):
 
     amplified_path = amplify_audio(temp_path)
     input_data = preprocess_audio(amplified_path)
-    prediction = model.predict(input_data)
+    prediction = model.predict(input_data)[0, 0]  # Get scalar value
 
     os.unlink(temp_path)
     os.unlink(amplified_path)
 
-    return {"prediction": float(prediction[0, 0])}
+    # Determine health status
+    status = "Abnormal" if prediction > 0.5 else "Healthy"
+
+    return {"prediction": float(prediction), "status": status}
