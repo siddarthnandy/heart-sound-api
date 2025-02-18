@@ -6,6 +6,7 @@ import librosa
 import soundfile as sf
 import tempfile
 import os
+import uvicorn
 
 # Initialize FastAPI app
 app = FastAPI()
@@ -56,24 +57,29 @@ def home():
 # API route to upload and analyze audio
 @app.post("/predict/")
 async def predict(file: UploadFile = File(...)):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
-        temp_audio.write(await file.read())
-        temp_path = temp_audio.name
+    try:
+        # Save temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
+            temp_audio.write(await file.read())
+            temp_path = temp_audio.name
 
-    amplified_path = amplify_audio(temp_path)
-    input_data = preprocess_audio(amplified_path)
-    prediction = model.predict(input_data)[0, 0]  # Get scalar value
+        # Amplify and preprocess audio
+        amplified_path = amplify_audio(temp_path)
+        input_data = preprocess_audio(amplified_path)
 
-    os.unlink(temp_path)
-    os.unlink(amplified_path)
+        # Make a prediction
+        prediction = model.predict(input_data)[0, 0]  # Get scalar value
+        status = "Abnormal" if prediction > 0.5 else "Healthy"
 
-import uvicorn
+        # Clean up temporary files
+        os.unlink(temp_path)
+        os.unlink(amplified_path)
 
+        return {"prediction": float(prediction), "status": status}
+
+    except Exception as e:
+        return {"error": str(e)}
+
+# Start the FastAPI server on port 8000
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-
-    # Determine health status
-    status = "Abnormal" if prediction > 0.5 else "Healthy"
-
-    return {"prediction": float(prediction), "status": status}
