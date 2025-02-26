@@ -21,7 +21,7 @@ app.add_middleware(
 )
 
 # Load the trained model
-MODEL_PATH = "final_best_model.h5"
+MODEL_PATH = "best_model.h5"
 model = tf.keras.models.load_model(MODEL_PATH)
 
 # Function to preprocess audio
