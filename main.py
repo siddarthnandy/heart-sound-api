@@ -22,7 +22,7 @@ app.add_middleware(
 )
 
 # Load the trained model
-MODEL_PATH = "best_model.h5"
+MODEL_PATH = "best_heart_sound_model.h5"
 model = tf.keras.models.load_model(MODEL_PATH)
 
 # Band-pass filter (20Hz - 400Hz)
