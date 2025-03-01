@@ -21,33 +21,21 @@ app.add_middleware(
 )
 
 # Load the trained model
-MODEL_PATH = "best_model.h5"
+MODEL_PATH = "best_heart_sound_model.h5"
 model = tf.keras.models.load_model(MODEL_PATH)
 
-# Function to preprocess audio
+# Function to preprocess audio (ONLY what is necessary)
 def preprocess_audio(file_path, n_mfcc=40):
-    y, sr = librosa.load(file_path, duration=5.0)
-    y = librosa.effects.preemphasis(y)
-    y = y / np.max(np.abs(y)) * 0.95  # Normalize amplitude
-    
-    # Feature extraction
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=n_mfcc)
-    mfcc_delta = librosa.feature.delta(mfcc)
-    mfcc_delta2 = librosa.feature.delta(mfcc, order=2)
-    combined_features = np.vstack((mfcc, mfcc_delta, mfcc_delta2)).T
-    
-    # Reshape for model input
-    combined_features = combined_features[:216, :]  # Ensure fixed shape
-    combined_features = np.expand_dims(combined_features, axis=0)  # Add batch dimension
-    return combined_features
+    # Load audio and downsample from 44.1kHz to 22.05kHz (matches training)
+    y, sr = librosa.load(file_path, sr=22050, duration=5.0)
 
-# Function to amplify audio
-def amplify_audio(file_path, factor=5.0):
-    y, sr = librosa.load(file_path, sr=None)
-    y = np.clip(y * factor, -1.0, 1.0)  # Amplify and clip to avoid distortion
-    amplified_path = file_path.replace(".wav", "_amplified.wav")
-    sf.write(amplified_path, y, sr)
-    return amplified_path
+    # Extract MFCC features (40 coefficients)
+    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=n_mfcc)
+
+    # Ensure correct input shape (40, 216, 1)
+    mfcc = np.expand_dims(mfcc, axis=-1)  # Add channel dimension
+
+    return np.expand_dims(mfcc, axis=0)  # Add batch dimension
 
 # API route to check if the server is running
 @app.get("/")
@@ -63,9 +51,8 @@ async def predict(file: UploadFile = File(...)):
             temp_audio.write(await file.read())
             temp_path = temp_audio.name
 
-        # Amplify and preprocess audio
-        amplified_path = amplify_audio(temp_path)
-        input_data = preprocess_audio(amplified_path)
+        # Preprocess audio (no filtering, no pre-emphasis, just MFCC)
+        input_data = preprocess_audio(temp_path)
 
         # Make a prediction
         prediction = model.predict(input_data)[0, 0]  # Get scalar value
@@ -73,7 +60,6 @@ async def predict(file: UploadFile = File(...)):
 
         # Clean up temporary files
         os.unlink(temp_path)
-        os.unlink(amplified_path)
 
         return {"prediction": float(prediction), "status": status}
 
