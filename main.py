@@ -7,6 +7,7 @@ import soundfile as sf
 import tempfile
 import os
 import uvicorn
+from scipy.signal import butter, filtfilt
 
 # Initialize FastAPI app
 app = FastAPI()
@@ -21,13 +22,36 @@ app.add_middleware(
 )
 
 # Load the trained model
-MODEL_PATH = "best_heart_sound_model.h5"
+MODEL_PATH = "best_model.h5"
 model = tf.keras.models.load_model(MODEL_PATH)
 
-# Function to preprocess audio (ONLY what is necessary)
+# Band-pass filter (20Hz - 400Hz)
+def bandpass_filter(y, sr, lowcut=20, highcut=400):
+    nyquist = 0.5 * sr
+    low = lowcut / nyquist
+    high = highcut / nyquist
+    b, a = butter(4, [low, high], btype='band')
+    return filtfilt(b, a, y)
+
+# RMS normalization function
+def rms_normalize(y, target_rms=0.1):
+    rms = np.sqrt(np.mean(y**2))
+    return y * (target_rms / (rms + 1e-6))  # Avoid division by zero
+
+# Function to preprocess audio
 def preprocess_audio(file_path, n_mfcc=40):
-    # Load audio and downsample from 44.1kHz to 22.05kHz (matches training)
+    # Load audio and resample to 22.05kHz (since recording is 44.1kHz)
     y, sr = librosa.load(file_path, sr=22050, duration=5.0)
+
+    # Apply pre-emphasis filter
+    pre_emphasis = 0.95
+    y = np.append(y[0], y[1:] - pre_emphasis * y[:-1])
+
+    # Apply band-pass filtering (20Hz - 400Hz)
+    y = bandpass_filter(y, sr, lowcut=20, highcut=400)
+
+    # Normalize RMS to 0.1
+    y = rms_normalize(y)
 
     # Extract MFCC features (40 coefficients)
     mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=n_mfcc)
@@ -51,7 +75,7 @@ async def predict(file: UploadFile = File(...)):
             temp_audio.write(await file.read())
             temp_path = temp_audio.name
 
-        # Preprocess audio (no filtering, no pre-emphasis, just MFCC)
+        # Preprocess audio
         input_data = preprocess_audio(temp_path)
 
         # Make a prediction
